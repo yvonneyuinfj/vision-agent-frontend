@@ -1,0 +1,8 @@
+.cap-dropdown{position:fixed;z-index:30;width:244px;padding:8px;border:1px solid #d3e3f4;border-radius:12px;background:#fbfdff;box-shadow:0 14px 45px #163c7730;color:#173b69}.cap-dropdown[hidden]{display:none}.cap-dropdown a{display:block;text-decoration:none;color:inherit;border-radius:7px;padding:14px 15px}.cap-dropdown a:hover,.cap-dropdown a:focus-visible{background:#eaf3ff;outline:2px solid #78b4ed;outline-offset:0}.cap-dropdown strong{display:block;font-size:15px;font-weight:600}.cap-dropdown span{display:block;font-size:12px;color:#718bac;margin-top:6px}.cap-dropdown.dark-menu{background:#0b2844;border-color:#315e7b;color:#d8f2ff;box-shadow:0 15px 50px #0007}.cap-dropdown.dark-menu a:hover,.cap-dropdown.dark-menu a:focus-visible{background:#154363;outline-color:#4abedf}.cap-dropdown.dark-menu span{color:#8fb4cf}
+.user-dropdown{width:216px}
+.user-menu-name{padding:12px 15px;font-size:13px;color:#718bac;border-bottom:1px solid #e4eefb;margin-bottom:6px;word-break:break-all}
+.user-dropdown.dark-menu .user-menu-name{color:#8fb4cf;border-bottom-color:#1d4468}
+.user-menu-logout{display:block;width:100%;text-align:left;border:0;background:none;color:#c0392b;font-size:15px;font-weight:600;border-radius:7px;padding:13px 15px;cursor:pointer}
+.user-menu-logout:hover,.user-menu-logout:focus-visible{background:#fdeeec;outline:2px solid #f0b3ac}
+.user-dropdown.dark-menu .user-menu-logout{color:#ff9c8f}
+.user-dropdown.dark-menu .user-menu-logout:hover,.user-dropdown.dark-menu .user-menu-logout:focus-visible{background:#3a1e22;outline-color:#8f4a44}

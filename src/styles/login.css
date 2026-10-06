@@ -1,0 +1,207 @@
+/* 登录页样式(独立作用域,全部收在 .login-* 下,避免与全局类名冲突) */
+
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+    background: radial-gradient(1200px 600px at 50% -10%, #dbeafe 0%, #eef6ff 45%, #eaf2ff 100%);
+    position: relative;
+}
+
+.login-theme {
+    position: absolute;
+    top: 22px;
+    right: 26px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .8);
+    color: var(--ink);
+    font-size: 13px;
+}
+
+.login-card {
+    width: min(920px, 100%);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 30px 70px -40px rgba(18, 51, 103, .45);
+}
+
+/* 左侧品牌栏 */
+.login-brand {
+    padding: 48px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: linear-gradient(160deg, #123367 0%, #1d5fea 130%);
+    color: #fff;
+}
+
+.login-logo {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+    margin-bottom: 18px;
+}
+
+.login-brand h2 {
+    margin: 0;
+    font-size: 24px;
+    line-height: 1.35;
+}
+
+.login-brand p {
+    margin: 0;
+    font-size: 12px;
+    letter-spacing: .14em;
+    opacity: .72;
+}
+
+.login-brand-note {
+    margin-top: auto;
+    padding-top: 32px;
+    font-size: 13px;
+    line-height: 1.6;
+    opacity: .82;
+}
+
+/* 右侧表单栏 */
+.login-form {
+    padding: 52px 44px;
+    display: flex;
+    flex-direction: column;
+}
+
+.login-form h1 {
+    margin: 0 0 6px;
+    font-size: 26px;
+    color: var(--ink);
+}
+
+.login-sub {
+    margin: 0 0 30px;
+    font-size: 14px;
+    color: var(--muted);
+}
+
+.login-form form {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.login-field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    font-size: 14px;
+    color: var(--ink);
+}
+
+.login-field input {
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #f7fbff;
+    color: var(--ink);
+    font-size: 15px;
+    transition: border-color .15s, box-shadow .15s;
+}
+
+.login-field input:focus {
+    outline: none;
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(29, 95, 234, .16);
+}
+
+.login-error {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #fff1f0;
+    border: 1px solid #ffccc7;
+    color: #cf1322;
+    font-size: 13px;
+}
+
+.login-submit {
+    margin-top: 6px;
+    padding: 13px 16px;
+    border: none;
+    border-radius: 10px;
+    background: var(--blue);
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    transition: filter .15s;
+}
+
+.login-submit:hover:not(:disabled) {
+    filter: brightness(1.06);
+}
+
+/* 深蓝主题 */
+.login-page.login-dark {
+    background: radial-gradient(1200px 600px at 50% -10%, #103364 0%, #0a1a3a 45%, #081430 100%);
+}
+
+.login-page.login-dark .login-card {
+    background: #0f2247;
+    border-color: rgba(120, 170, 255, .22);
+}
+
+.login-page.login-dark .login-brand {
+    background: linear-gradient(160deg, #081430 0%, #123367 130%);
+}
+
+.login-page.login-dark .login-form h1 {
+    color: #eaf2ff;
+}
+
+.login-page.login-dark .login-sub {
+    color: #93b0d8;
+}
+
+.login-page.login-dark .login-field {
+    color: #dce8fb;
+}
+
+.login-page.login-dark .login-field input {
+    background: #0a1a3a;
+    border-color: rgba(120, 170, 255, .28);
+    color: #eaf2ff;
+}
+
+.login-page.login-dark .login-theme {
+    background: rgba(12, 28, 60, .7);
+    border-color: rgba(120, 170, 255, .28);
+    color: #dce8fb;
+}
+
+/* 窄屏:单列,品牌栏压缩 */
+@media (max-width: 720px) {
+    .login-card {
+        grid-template-columns: 1fr;
+    }
+
+    .login-brand {
+        padding: 30px 26px;
+    }
+
+    .login-brand-note {
+        padding-top: 16px;
+    }
+
+    .login-form {
+        padding: 34px 26px;
+    }
+}

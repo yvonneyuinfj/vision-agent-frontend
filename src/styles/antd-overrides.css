@@ -1,0 +1,93 @@
+/* antd 组件与原站视觉风格的对齐样式(移植 dialog/center-dialog 外观) */
+
+/* 全局 `svg{fill:none;stroke:currentColor}`(为自定义线性图标准备)会误伤 Ant 的实心图标
+   (弹窗关闭叉、下拉箭头等)→ 只剩描边几乎不可见。此处统一还原 Ant 图标。 */
+.anticon svg{width:1em;height:1em;fill:currentColor;stroke:none}
+
+/* ---------- 全局内容弹窗(对应原 dialog 元素) ---------- */
+.agent-modal .ant-modal-content{border:1px solid #d7e7fa;border-radius:20px;overflow:hidden;padding:0;background:linear-gradient(135deg,#fff,#f7fbff);box-shadow:0 30px 100px #03286255}
+.agent-modal .ant-modal-header{margin:0;padding:22px 64px 14px 32px;border-bottom:1px solid #e4edf8;background:none}
+.agent-modal .ant-modal-title p{font-size:11px;letter-spacing:1.8px;color:#6b98ce;margin:0 0 10px}
+.agent-modal .ant-modal-title h2{font-size:25px;line-height:1.4;margin:0;font-weight:600;color:var(--ink)}
+.agent-modal .ant-modal-body{padding:0;max-height:calc(88vh - 150px);overflow:auto}
+.agent-modal .ant-modal-close{top:22px;inset-inline-end:24px;width:32px;height:32px;border-radius:50%;background:#e9f2fd;color:#6a8ab5}
+.agent-modal .dialog-body{padding:18px 32px 20px;line-height:1.85;color:#5c769a;font-size:14px}
+.agent-modal .dialog-body p{margin:0 0 16px}
+.agent-modal .dialog-body h3{color:#234e85;font-size:16px;margin:20px 0 12px;font-weight:600}
+.agent-modal .dialog-body ul{padding-left:20px;margin:10px 0}
+.agent-modal .dialog-body li{margin:5px 0}
+.agent-modal .dialog-body>.dialog-body{padding:0}
+.agent-modal .dialog-actions{display:flex;justify-content:flex-end;gap:10px;padding:14px 32px;border-top:1px solid #e0ebf8;flex-wrap:wrap}
+@media(max-width:640px){.agent-modal .ant-modal-header{padding:21px 56px 15px 20px}.agent-modal .ant-modal-title h2{font-size:21px}.agent-modal .ant-modal-title p{font-size:10px}.agent-modal .dialog-body{padding:18px 20px 22px;font-size:13px}.agent-modal .dialog-actions{padding:14px 20px}}
+
+/* ---------- 七大领域详情卡片（精致版） ---------- */
+.dialog-title-badge{display:inline-block;vertical-align:middle;margin-left:12px;font-size:12px;font-weight:600;letter-spacing:.5px;color:#2f6fd0;background:#e8f1ff;border:1px solid #cfe0fb;border-radius:999px;padding:3px 12px;line-height:1.5}
+#dialog-subtitle{font-size:14px;letter-spacing:0;color:#5c769a;margin:9px 0 0;font-weight:400}
+.dom-stats{display:grid;grid-template-columns:1fr 1fr;background:linear-gradient(135deg,#eef5ff,#f7fbff);border:1px solid #dcebfb;border-radius:14px;padding:14px 0;margin:0 0 16px}
+.dom-stat{padding:2px 24px}
+.dom-stat+.dom-stat{border-left:1px solid #d7e6f8}
+.dom-stat-label{display:block;font-size:13px;font-weight:600;color:#3a5f8f;margin-bottom:8px}
+.dom-stat-num{display:flex;align-items:baseline;gap:6px;font-size:30px;font-weight:800;color:#2f6fd0;line-height:1;letter-spacing:-1px}
+.dom-stat-num i{font-size:14px;font-weight:600;font-style:normal;color:#4b78b1}
+.dom-stat-note{display:block;font-size:12px;color:#93a9c4;margin-top:7px}
+.dom-stat-text{font-size:14px;color:#35608f;margin:0 !important;line-height:1.7}
+.dom-cap{display:inline-block;font-size:12.5px;color:#2f6fd0;background:#e6f0ff;border:1px solid #cfe0fb;border-radius:7px;padding:4px 10px;margin:0 6px 6px 0}
+.dom-scenes-head{display:flex;align-items:center;justify-content:space-between;margin:0 0 4px}
+.dom-scenes-head h3{margin:0 !important}
+.dom-scenes{display:flex;flex-direction:column}
+.dom-scene{display:flex;align-items:center;gap:16px;padding:12px 4px;border-bottom:1px solid #eaf1fa}
+.dom-scene:last-child{border-bottom:0}
+.dom-scene-icon{flex-shrink:0;width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:#2f6fd0;background:linear-gradient(135deg,#eaf3ff,#f5faff);border:1px solid #d7e7fb}
+.dom-scene-icon svg{width:22px;height:22px}
+.dom-scene-main{display:flex;flex-direction:column;gap:3px}
+.dom-scene-main strong{font-size:15px;font-weight:600;color:#274a72}
+.dom-scene-main small{font-size:13px;color:#7f97b4}
+.dom-foot{font-size:12px;color:#95a7bd;margin:12px 0 0 !important}
+
+/* ---------- 深蓝主题下的弹窗 ---------- */
+body.dark-theme .agent-modal .ant-modal-content{border-color:#2f5f83;background:linear-gradient(140deg,#0a2a45,#062036);color:#e8f5ff}
+body.dark-theme .agent-modal .ant-modal-header{border-bottom-color:#204362;background:none}
+body.dark-theme .agent-modal .ant-modal-title h2{color:#e8f5ff}
+body.dark-theme .agent-modal .dialog-body{color:#a9c8e2}
+body.dark-theme .agent-modal .dialog-body h3{color:#cfe9ff}
+body.dark-theme .agent-modal .dialog-actions{border-top-color:#204362}
+body.dark-theme .agent-modal .ant-modal-close{background:#12395a;color:#8fbde3}
+
+/* 深蓝主题：领域详情卡片 */
+body.dark-theme .agent-modal .dialog-title-badge{color:#8fc4ff;background:#123a5e;border-color:#265a86}
+body.dark-theme .agent-modal #dialog-subtitle{color:#a9c8e2}
+body.dark-theme .agent-modal .dom-stats{background:linear-gradient(135deg,#0d3252,#0a2740);border-color:#204362}
+body.dark-theme .agent-modal .dom-stat+.dom-stat{border-left-color:#204362}
+body.dark-theme .agent-modal .dom-stat-label{color:#9fc4e8}
+body.dark-theme .agent-modal .dom-stat-num{color:#5fa8ff}
+body.dark-theme .agent-modal .dom-stat-num i{color:#8fbde3}
+body.dark-theme .agent-modal .dom-stat-note{color:#6f93b5}
+body.dark-theme .agent-modal .dom-stat-text{color:#cfe6fb}
+body.dark-theme .agent-modal .dom-cap{background:#123a5e;color:#bfe0ff;border-color:#265a86}
+body.dark-theme .agent-modal .dom-scene{border-bottom-color:#173a58}
+body.dark-theme .agent-modal .dom-scene-icon{background:linear-gradient(135deg,#123a5e,#0e2f4d);border-color:#265a86;color:#5fa8ff}
+body.dark-theme .agent-modal .dom-scene-main strong{color:#e8f5ff}
+body.dark-theme .agent-modal .dom-scene-main small{color:#9fc0dc}
+body.dark-theme .agent-modal .dom-foot{color:#6f93b5}
+
+/* ---------- 表单控件对齐 ---------- */
+.agent-modal .fields label,.agent-form label{display:block;font-size:13px;color:#48688f;margin-bottom:12px}
+.agent-modal .fields input{width:100%}
+.agent-form .ant-form-item{margin-bottom:14px}
+.upload-zone{display:grid;gap:7px;place-items:center;border:1.5px dashed #9cc3ec;border-radius:12px;background:#f4f9ff;padding:22px 16px;cursor:pointer;text-align:center;margin-bottom:12px}
+.upload-zone strong{font-size:14px;color:#2b5c95}
+.upload-zone span{font-size:12px;color:#7191b6}
+.upload-zone input[type=file]{display:none}
+.request-files{list-style:none;margin:0 0 12px;padding:0;font-size:12px;color:#486d99}
+.request-files li{background:#eef5fd;border-radius:7px;padding:7px 11px;margin-top:6px}
+
+/* ---------- 消息提示位置 ---------- */
+.ant-message{top:88px !important}
+
+/* ---------- 首页助手「＋」菜单：图标统一对齐、精致化 ---------- */
+.assistant-menu .ant-dropdown-menu{min-width:176px;padding:5px}
+.assistant-menu .ant-dropdown-menu-item{border-radius:8px;margin:1px 0}
+.assistant-menu .ant-dropdown-menu-item .ant-dropdown-menu-title-content{display:flex;align-items:center;gap:10px}
+.assistant-menu .ant-dropdown-menu-title-content svg{width:17px;height:17px;flex:none;stroke-width:1.8}
+.assistant-menu .ant-dropdown-menu-item-group-title{padding:8px 12px 4px;font-size:12px;font-weight:500;color:#9aa7b8;letter-spacing:.3px}
+.assistant-menu-check{width:16px;height:16px;margin-left:auto;color:#2f6bb0;stroke-width:2.2}

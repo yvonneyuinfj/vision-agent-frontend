@@ -1,0 +1,219 @@
+/* ===================== 独立质检报告页 =====================
+ * 复用 center-page 的 --c-* 主题变量（亮 / 深蓝自动切换）；
+ * 仅从「任务中心 · 报告清单 → 查看」进入，路径 /report/:taskId。 */
+
+.rpt-wrap {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 22px clamp(14px, 3vw, 32px) 60px;
+}
+
+/* ---------- 工具条 ---------- */
+.rpt-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 4px;
+  margin-bottom: 8px;
+  background: var(--c-bg);
+}
+.rpt-tool-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.rpt-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: inherit; font-size: 13px; color: var(--c-ink);
+  background: var(--c-panel); border: 1px solid var(--c-line);
+  border-radius: 8px; padding: 8px 13px; cursor: pointer;
+  transition: border-color .16s, color .16s;
+}
+.rpt-back:hover { color: var(--c-blue); border-color: var(--c-blue); }
+.rpt-tool-task { font-size: 12.5px; color: var(--c-muted); }
+.rpt-tool-task code { font-size: 12px; color: var(--c-ink); }
+.rpt-tool-right { display: flex; align-items: center; gap: 10px; }
+.rpt-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  font: inherit; font-size: 13px; font-weight: 550; letter-spacing: .3px;
+  border-radius: 9px; padding: 8px 16px;
+  cursor: pointer; border: 1px solid var(--c-line); background: var(--c-panel);
+  color: var(--c-ink);
+  transition: background .16s, border-color .16s, box-shadow .16s, transform .12s, filter .16s;
+}
+.rpt-btn-ico { width: 15px; height: 15px; flex-shrink: 0; }
+.rpt-btn:hover { background: var(--c-tint); border-color: var(--c-blue); }
+.rpt-btn:active { transform: translateY(0); }
+.rpt-btn.primary {
+  background: linear-gradient(135deg, #2f74ea, #1d4ed8);
+  border-color: transparent; color: #fff;
+  box-shadow: 0 4px 14px rgba(35, 104, 228, .28);
+}
+.rpt-btn.primary:hover {
+  background: linear-gradient(135deg, #3d80f2, #2457d6);
+  box-shadow: 0 7px 20px rgba(35, 104, 228, .38);
+  transform: translateY(-1px);
+}
+.rpt-btn.primary:active { transform: translateY(0); box-shadow: 0 3px 10px rgba(35, 104, 228, .3); }
+.rpt-btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; transform: none; }
+.rpt-btn:disabled:hover { background: var(--c-panel); border-color: var(--c-line); }
+
+/* ---------- 报告纸 ---------- */
+.rpt-sheet {
+  position: relative;
+  background: var(--c-panel);
+  border: 1px solid var(--c-line);
+  border-radius: 14px;
+  box-shadow: 0 10px 40px var(--c-shadow);
+  padding: clamp(24px, 4vw, 48px) clamp(20px, 5vw, 56px) 32px;
+}
+
+.rpt-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 24px; padding-bottom: 20px; border-bottom: 2px solid var(--c-line);
+}
+.rpt-eyebrow {
+  margin: 0 0 8px; font-size: 11px; letter-spacing: 2.4px;
+  color: var(--c-blue); text-transform: uppercase;
+}
+.rpt-title { margin: 0; font-size: clamp(24px, 4vw, 34px); font-weight: 700; color: var(--c-ink); letter-spacing: .5px; }
+.rpt-sub { margin: 10px 0 0; font-size: 13px; color: var(--c-muted); line-height: 1.7; }
+
+/* ---------- 判级印章 ---------- */
+.rpt-stamp {
+  flex-shrink: 0; text-align: center; line-height: 1.15;
+  padding: 12px 18px; border-radius: 10px;
+  border: 2.5px dashed currentColor; color: var(--c-muted);
+  transform: rotate(-6deg); opacity: .92; min-width: 128px;
+}
+.rpt-stamp-level { display: block; font-size: 26px; font-weight: 800; letter-spacing: 1px; }
+.rpt-stamp-sub { display: block; font-size: 10px; letter-spacing: .5px; margin-top: 4px; font-weight: 500; }
+.rpt-stamp[data-level="pass"] { color: #1f9d57; }
+.rpt-stamp[data-level="defect"] { color: #e08b1e; }
+.rpt-stamp[data-level="fail"] { color: #d64545; }
+.rpt-stamp[data-level="review"] { color: #2f6fd0; }
+
+/* ---------- 元信息栅格 ---------- */
+.rpt-meta {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px; margin: 22px 0 6px;
+  background: var(--c-line); border: 1px solid var(--c-line); border-radius: 10px; overflow: hidden;
+}
+.rpt-meta-item { background: var(--c-panel); padding: 12px 15px; display: grid; gap: 4px; }
+.rpt-meta-k { font-size: 11px; color: var(--c-muted); letter-spacing: .3px; }
+.rpt-meta-v { font-size: 13.5px; color: var(--c-ink); font-weight: 560; word-break: break-all; }
+
+/* ---------- 区块 ---------- */
+.rpt-sec { margin-top: 34px; }
+.rpt-sec-h {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 17px; font-weight: 650; color: var(--c-ink); margin: 0 0 16px;
+}
+.rpt-sec-h:before { content: ''; width: 4px; height: 18px; border-radius: 3px; background: var(--c-blue); }
+.rpt-sec-h .en { font-size: 11px; letter-spacing: 1.5px; color: var(--c-muted); font-weight: 500; }
+.rpt-lead { margin: 0 0 18px; font-size: 14px; line-height: 1.9; color: var(--c-muted); }
+.rpt-lead b { color: var(--c-ink); font-weight: 600; }
+
+/* ---------- 图像对比 ---------- */
+.rpt-imgs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.rpt-imgs.single { grid-template-columns: minmax(0, 1fr); max-width: 560px; }
+.rpt-img-cell { border: 1px solid var(--c-line); border-radius: 10px; overflow: hidden; background: var(--c-soft); }
+.rpt-img-cap {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; font-size: 11px; letter-spacing: 1.4px; color: var(--c-muted);
+  background: var(--c-tint); border-bottom: 1px solid var(--c-line);
+}
+.rpt-img-cap.annotated { color: #b5651d; background: #fbf0e2; }
+.rpt-img-wrap { display: block; width: 100%; aspect-ratio: 4 / 3; cursor: zoom-in; background: #0e2233; }
+.rpt-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.rpt-img-missing { display: grid; place-items: center; height: 100%; color: var(--c-muted); font-size: 12.5px; }
+
+/* ---------- 缺陷卡片 ---------- */
+.rpt-defects { display: grid; gap: 12px; margin-bottom: 22px; }
+.rpt-defect {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 12px;
+  padding: 13px 16px; border: 1px solid var(--c-line); border-radius: 10px; background: var(--c-soft);
+}
+.rpt-defect-id {
+  font-size: 12px; font-weight: 700; color: #fff; background: var(--c-blue);
+  border-radius: 6px; padding: 3px 8px; align-self: center;
+}
+.rpt-defect-main { min-width: 0; display: grid; gap: 5px; }
+.rpt-defect-name { font-size: 14.5px; font-weight: 620; color: var(--c-ink); }
+.rpt-defect-name .type { font-size: 11.5px; color: var(--c-muted); font-weight: 400; margin-left: 8px; }
+.rpt-defect-desc { font-size: 12.5px; line-height: 1.7; color: var(--c-muted); }
+.rpt-defect-conf { text-align: right; font-size: 12px; color: var(--c-muted); white-space: nowrap; align-self: center; }
+.rpt-defect-conf b { display: block; font-size: 16px; color: var(--c-ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.rpt-empty { font-size: 13px; color: var(--c-muted); padding: 14px; border: 1px dashed var(--c-line); border-radius: 10px; text-align: center; }
+
+/* ---------- 类别定义表 ---------- */
+.rpt-table-h { font-size: 14px; font-weight: 620; color: var(--c-ink); margin: 4px 0 12px; }
+.rpt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rpt-table th, .rpt-table td { padding: 10px 12px; border-bottom: 1px solid var(--c-line); text-align: left; vertical-align: top; }
+.rpt-table th { background: var(--c-tint); color: var(--c-muted); font-weight: 600; font-size: 12px; letter-spacing: .3px; }
+.rpt-table td.code { font-variant-numeric: tabular-nums; color: var(--c-ink); white-space: nowrap; }
+.rpt-nature { display: inline-block; font-size: 11.5px; padding: 2px 9px; border-radius: 20px; }
+.rpt-nature.defect { color: #d64545; background: #fbe9e9; }
+.rpt-nature.false { color: var(--c-muted); background: var(--c-soft); border: 1px solid var(--c-line); }
+.rpt-detect { font-variant-numeric: tabular-nums; color: var(--c-ink); }
+
+/* ---------- 知识库引用 ---------- */
+.rpt-cites { display: grid; gap: 14px; }
+.rpt-cite-h { font-size: 13px; color: var(--c-ink); margin: 0 0 6px; }
+.rpt-cite-h .doc { font-weight: 620; }
+.rpt-cite-h .score { font-size: 11.5px; color: var(--c-muted); margin-left: 8px; }
+.rpt-cite-quote {
+  margin: 0; padding: 12px 16px; font-size: 13px; line-height: 1.85;
+  color: var(--c-muted); background: var(--c-soft);
+  border-left: 3px solid var(--c-blue); border-radius: 0 8px 8px 0;
+  white-space: pre-wrap;
+}
+
+/* ---------- AI 综合分析 ---------- */
+.rpt-ai { font-size: 14px; }
+
+/* ---------- 页脚 ---------- */
+.rpt-foot {
+  margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--c-line);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  font-size: 12px; color: var(--c-muted);
+}
+
+/* ---------- 状态（加载 / 失败 / 演示占位） ---------- */
+.rpt-state {
+  max-width: 620px; margin: 60px auto; text-align: center;
+  padding: 40px 30px; border: 1px solid var(--c-line); border-radius: 14px;
+  background: var(--c-panel); color: var(--c-muted);
+}
+.rpt-state h2 { font-size: 18px; color: var(--c-ink); margin: 0 0 10px; }
+.rpt-state p { font-size: 13.5px; line-height: 1.8; margin: 0; }
+.rpt-skel { display: grid; gap: 14px; }
+.rpt-skel-bar { height: 16px; border-radius: 6px; background: linear-gradient(90deg, var(--c-tint), var(--c-line), var(--c-tint)); background-size: 200% 100%; animation: rpt-shimmer 1.3s infinite; }
+@keyframes rpt-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 720px) {
+  .rpt-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rpt-imgs { grid-template-columns: minmax(0, 1fr); }
+  .rpt-head { flex-direction: column; }
+  .rpt-stamp { transform: rotate(-4deg); align-self: flex-start; }
+}
+
+/* ---------- 深蓝主题微调 ---------- */
+.report-page.dark-theme .rpt-stamp[data-level="defect"] { color: #f0b45a; }
+.report-page.dark-theme .rpt-stamp[data-level="pass"] { color: #4ade80; }
+.report-page.dark-theme .rpt-stamp[data-level="fail"] { color: #ff8a80; }
+.report-page.dark-theme .rpt-nature.defect { color: #ff9a90; background: #3d1c1a; }
+.report-page.dark-theme .rpt-img-cap.annotated { color: #f0c479; background: #3a2c10; }
+
+/* ---------- 打印 / 存为 PDF ---------- */
+@media print {
+  .rpt-toolbar, .site-header, .app-header, .img-lb { display: none !important; }
+  body.report-page { background: #fff; }
+  .rpt-wrap { max-width: none; padding: 0; margin: 0; }
+  .rpt-sheet { border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+  .rpt-stamp { opacity: 1; }
+  .rpt-img-wrap { cursor: default; }
+  @page { margin: 12mm; }
+}
