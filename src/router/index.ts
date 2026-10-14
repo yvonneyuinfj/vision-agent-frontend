@@ -10,6 +10,8 @@ const router = createRouter({
     { path: '/capabilities', name: 'capabilities', component: () => import('@/views/CapabilitiesView.vue') },
     { path: '/detection', name: 'detection', component: () => import('@/views/DetectionView.vue') },
     { path: '/tasks', name: 'tasks', component: () => import('@/views/task/TaskCenterView.vue') },
+    // 复核工作台：独立路由页（任务列表「去复核」与检测卡片的深链入口）
+    { path: '/tasks/review', name: 'tasks-review', component: () => import('@/views/task/TaskReviewWorkbench.vue') },
     { path: '/report/:taskId', name: 'report', component: () => import('@/views/ReportView.vue') },
     { path: '/knowledge', name: 'knowledge', component: () => import('@/views/knowledge/KnowledgeView.vue') },
     { path: '/tools', name: 'tools', component: () => import('@/views/tools/ToolsView.vue') },
@@ -45,6 +47,8 @@ router.afterEach((to) => {
     document.title = '智能检测 · 智能视觉助手';
   } else if (to.path === '/tasks') {
     document.title = '任务中心';
+  } else if (to.path === '/tasks/review') {
+    document.title = '复核工作台 · 任务中心';
   } else if (to.path.startsWith('/report')) {
     document.title = '智能质检报告';
   } else if (to.path === '/knowledge') {

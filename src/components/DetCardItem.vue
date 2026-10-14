@@ -5,19 +5,23 @@
  *  - scene_card：候选场景「按此送检」+「采集指引」，走 sendRequest 复用会话轨；
  *  - review_card：AI 预判快照 + 缺陷明细 + 就地通过/退回（复用 use-tasks.submitReview）；
  *  - report_card：会话内展开 report.md 全文（MarkdownView）+ 打开报告页；
- *  - task_card / done_card：整卡可点，深链到任务中心对应页签并预选该任务。
+ *  - task_card：一行派发回执（实时进度由检测页底部任务舱统一呈现）；
+ *  - done_card：整卡可点，就地弹任务详情弹窗。
  *  后端 payload 与 React 前端同源（同一 /agent/sessions/{id}/stream），字段口径一致。 */
-import { computed, onUnmounted, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import IconSvg from '@/components/IconSvg.vue';
 import MarkdownView from '@/components/MarkdownView.vue';
+import GradeStamp from '@/components/GradeStamp.vue';
 import { sendRequest, openTaskDetail, isTaskRunning, taskFinalStatus, type DetItem } from '@/composables/use-detection';
 import { submitReview } from '@/composables/use-tasks';
+import { useTheme } from '@/composables/use-theme';
 import { sceneCodeToLabel } from '@/data/scene-map';
 
 const props = defineProps<{ item: DetItem }>();
 const router = useRouter();
+const theme = useTheme();
 
 const p = computed<any>(() => props.item.payload || {});
 const type = computed(() => props.item.cardType || '');
@@ -45,7 +49,13 @@ function modeLabel(mode: unknown): string {
 /* ---------- 卡片点击：就地弹详情（完整工作台经弹窗底部深链承接） ---------- */
 function goTab(tab: 'list' | 'review' | 'reports') {
   if (!taskId.value) return;
-  void router.push({ path: '/tasks', query: { tab, task: taskId.value } });
+  const themeQuery = theme.value === 'dark' ? { theme: 'dark' as const } : {};
+  // 复核已拆为独立路由页；列表/报告仍走任务中心
+  if (tab === 'review') {
+    void router.push({ path: '/tasks/review', query: { task: taskId.value, ...themeQuery } });
+    return;
+  }
+  void router.push({ path: '/tasks', query: { tab, task: taskId.value, ...themeQuery } });
 }
 function onCardKey(e: KeyboardEvent) {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTaskDetail(taskId.value); }
@@ -65,7 +75,7 @@ function askGuide() {
   void sendRequest('这张图片不属于上述任何场景。请给我图像采集指引，说明如何拍摄 / 准备一张可用于质检的图像。', [], 'auto');
 }
 
-/* ---------- 复核卡（就地终裁：通过 / 退回 + 意见，复用 submitReview） ---------- */
+/* ---------- 复核卡（就地终裁：同意 / 驳回 + 意见，改判与缺陷修订经复核工作台） ---------- */
 const rvVerdict = ref<'approve' | 'return'>('approve');
 const rvOpinion = ref('');
 const rvBusy = ref(false);
@@ -79,7 +89,10 @@ async function submitRv() {
   try {
     await submitReview(taskId.value, rvVerdict.value, rvOpinion.value.trim());
     rvDone.value = true;
-    message.success(rvVerdict.value === 'approve' ? '复核通过，已提交后端。' : '已退回，任务保持待复核。', 3);
+    message.success(
+      rvVerdict.value === 'approve'
+        ? '已同意判级，流水线继续生成报告。'
+        : '已驳回终止：任务落失败终态（不是退回重排队），如需重检请重新提交。', 4);
   } catch (e: any) {
     message.error(`复核提交失败：${e?.message || '未知错误'}`, 4);
   } finally {
@@ -87,15 +100,15 @@ async function submitRv() {
   }
 }
 
-/* ---------- 报告卡（会话内展开 report.md 全文） ---------- */
+/* ---------- 报告卡（点击弹出 report.md 全文弹窗） ---------- */
 const reportUri = computed<string>(() => p.value.report?.uri || p.value.report_uri || '');
 const reportLead = computed<string>(() => p.value.report?.analysis_lead || p.value.analysis_lead || '');
 const repOpen = ref(false);
 const repText = ref<string | null>(null);
 const repLoading = ref(false);
-async function toggleReport() {
-  repOpen.value = !repOpen.value;
-  if (repOpen.value && repText.value === null && reportUri.value) {
+async function openReport() {
+  repOpen.value = true;
+  if (repText.value === null && reportUri.value) {
     repLoading.value = true;
     try {
       const r = await fetch(reportUri.value, { credentials: 'include' });
@@ -107,51 +120,51 @@ async function toggleReport() {
     }
   }
 }
+function closeReport() { repOpen.value = false; }
+/** 弹窗内跳任务详情：先关本弹窗，避免与全局详情弹窗叠加。 */
+function goTaskDetail() { repOpen.value = false; openTaskDetail(taskId.value); }
 
 /* ---------- 通用兜底卡文本 ---------- */
 const genericText = computed<string>(() =>
   p.value.message || p.value.summary || p.value.analysis_lead || p.value.guidance || '');
 
-/* ---------- 任务卡：运行中实时反馈 ----------
- * task_card 落卡后后台可能跑几分钟，而卡片"只推不改"不会自动刷新；
- * 用本地秒表 + 不定长进度条让卡片本身"活"起来，明确传达"系统仍在工作"。 */
+/* ---------- 任务派发回执：只陈述事实，不承载实时态 ----------
+ * task_card 由 SSE 在工具执行期间推下，必然落在助手本回合文字的中间。
+ * 若在此处放进度条 + 秒表，用户会读成"卡在这一步了"，还会与线程底部的运行反馈抢注意力。
+ * 故回执行只说"已派发 / 已落定"，实时秒表统一交给 DetectionView 底部的任务舱——
+ * 聊天流承载历史事实，实时态落在最新位置。 */
 const taskRunning = computed(() => type.value === 'task_card' && isTaskRunning(taskId.value));
-const taskElapsed = ref(0);
-let _taskTimer: ReturnType<typeof setInterval> | undefined;
-watch(taskRunning, (run) => {
-  if (run) {
-    taskElapsed.value = 0;
-    if (!_taskTimer) _taskTimer = setInterval(() => { taskElapsed.value += 1; }, 1000);
-  } else if (_taskTimer) {
-    clearInterval(_taskTimer); _taskTimer = undefined;
-  }
-}, { immediate: true });
-const taskElapsedText = computed(() => {
-  const s = taskElapsed.value;
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}分${(s % 60).toString().padStart(2, '0')}秒`;
-});
-onUnmounted(() => { if (_taskTimer) clearInterval(_taskTimer); });
 
 /* ---------- 任务卡：终态落定 ----------
- * 完成/复核/报告卡到达后，isTaskRunning 转 false；反查到终态卡即视为已落定，
- * 进度条停走并转终态样式，避免旧 task_card 永远停在 running 观感。 */
+ * 完成/复核/报告卡到达后 isTaskRunning 转 false；反查到终态卡即染色，
+ * 避免旧回执行永远停在"执行中"观感。 */
 const finalStatus = computed<string | null>(() =>
   type.value === 'task_card' ? taskFinalStatus(taskId.value) : null);
 const taskSettled = computed(() => type.value === 'task_card' && !taskRunning.value && !!finalStatus.value);
-const navStatus = computed<string>(() => {
-  if (type.value === 'done_card') return p.value.status || 'completed';
-  if (type.value === 'task_card') {
-    return taskRunning.value ? (p.value.status || 'running') : (finalStatus.value || 'completed');
-  }
-  return p.value.status || '';
-});
+/** 完成卡（navcard）状态徽标。 */
+const navStatus = computed<string>(() => p.value.status || '');
 const settledText = computed<string>(() => {
   switch (finalStatus.value) {
     case 'failed': return '任务执行失败';
     case 'awaiting_review': return '已暂停，待人工复核';
     case 'completed': return '算法已完成';
     default: return '任务已结束';
+  }
+});
+/** 回执行文案：运行中不带任何时间信息，进度归任务舱。 */
+const receiptText = computed<string>(() => {
+  if (taskRunning.value) return '检测任务执行中';
+  if (taskSettled.value) return settledText.value;
+  return '任务已派发';
+});
+/** 回执行色调（左竖条 + 圆点），供 CSS 类名切换。 */
+const receiptTone = computed<string>(() => {
+  if (taskRunning.value) return 'running';
+  switch (finalStatus.value) {
+    case 'failed': return 'failed';
+    case 'awaiting_review': return 'review';
+    case 'completed': return 'done';
+    default: return 'pending';
   }
 });
 
@@ -161,6 +174,9 @@ const STATUS_LABEL: Record<string, string> = {
   awaiting_review: '待复核', failed: '执行失败', canceled: '已取消',
 };
 function statusLabel(s: string): string { return STATUS_LABEL[s] || s; }
+
+/* 完成卡头部是否已盖判级印章（有印章时隐去状态徽标，避免与“已完成”重复） */
+const headStamped = computed<boolean>(() => !!p.value.grade_level && p.value.status !== 'failed');
 
 /* ---------- 文档生成卡（会话内 generate_ppt 产出） ---------- */
 const docStatus = computed<string>(() => p.value.status || 'completed');
@@ -205,10 +221,11 @@ const docEngine = computed<string>(() => {
       <div class="det-card-head">
         <strong>终裁复核</strong>
         <span class="det-card-task">{{ taskId }}</span>
+        <GradeStamp v-if="p.grade_level && rvActive" :level="p.grade_level" size="sm" subtitle="AI 预判 · 自动判级引擎" />
       </div>
       <template v-if="rvActive">
         <p class="det-rev-why">
-          任务已暂停并进入人工复核门<span v-if="p.grade_level">：AI 预判「{{ gradeLabel(p.grade_level) }}」</span><span v-if="p.defect_count">，检出 {{ p.defect_count }} 项缺陷</span><span v-if="p.grade_summary">。{{ p.grade_summary }}</span>
+          任务已暂停并进入人工复核门<span v-if="p.defect_count">，检出 {{ p.defect_count }} 项缺陷</span><span v-if="p.grade_summary">。{{ p.grade_summary }}</span>
         </p>
         <div v-if="rvDefects.length" class="det-rev-defects">
           <div v-for="(d, i) in rvDefects" :key="i" class="det-rev-drow">
@@ -221,12 +238,12 @@ const docEngine = computed<string>(() => {
         </div>
         <div class="det-rev-form">
           <div class="det-rev-seg" role="group" aria-label="复核结论">
-            <button type="button" :class="{ on: rvVerdict === 'approve' }" @click="rvVerdict = 'approve'">通过</button>
-            <button type="button" :class="{ on: rvVerdict === 'return' }" @click="rvVerdict = 'return'">退回</button>
+            <button type="button" :class="{ on: rvVerdict === 'approve' }" @click="rvVerdict = 'approve'">同意判级</button>
+            <button type="button" :class="{ on: rvVerdict === 'return' }" @click="rvVerdict = 'return'">驳回终止</button>
           </div>
           <textarea v-model="rvOpinion" class="det-rev-note" rows="2" placeholder="复核意见（可选）"></textarea>
           <div class="det-rev-actions">
-            <button class="det-card-btn" type="button" :disabled="rvBusy" @click="goTab('review')">打开复核工作台 →</button>
+            <button class="det-card-btn" type="button" @click="goTab('review')">改判 / 核图去工作台 →</button>
             <button class="det-rev-submit" type="button" :disabled="rvBusy" @click="submitRv">{{ rvBusy ? '提交中…' : '提交复核结论' }}</button>
           </div>
         </div>
@@ -243,7 +260,7 @@ const docEngine = computed<string>(() => {
       <div class="det-card-head">
         <strong>智能质检报告</strong>
         <span class="det-card-task">{{ taskId }}</span>
-        <span v-if="p.grade_level" class="det-grade" :data-level="p.grade_level">判级：{{ gradeLabel(p.grade_level) }}</span>
+        <GradeStamp v-if="p.grade_level" :level="p.grade_level" size="sm" />
       </div>
       <div class="det-card-meta">
         <span v-if="p.scene">场景 {{ sceneCodeToLabel(p.scene) }}</span>
@@ -252,17 +269,35 @@ const docEngine = computed<string>(() => {
       </div>
       <p v-if="reportLead" class="det-card-text">{{ reportLead }}</p>
       <div v-if="reportUri" class="det-report-doc">
-        <button class="det-report-doc-h" type="button" @click="toggleReport">
-          <span class="det-doc-chev" :class="{ open: repOpen }">▸</span>
-          {{ repOpen ? '收起报告内容' : '查看报告' }}
+        <button class="det-report-doc-h" type="button" @click="openReport">
+          <span class="det-doc-chev">↗</span>
+          查看报告
           <code class="det-doc-name">report.md</code>
         </button>
-        <div v-show="repOpen" class="det-report-doc-body">
-          <p v-if="repLoading" class="det-report-tip">报告内容加载中…</p>
-          <p v-else-if="repText === ''" class="det-report-tip">报告内容为空或加载失败。</p>
-          <MarkdownView v-else-if="repText" :text="repText" />
-        </div>
       </div>
+      <Teleport to="body">
+        <div v-if="repOpen" class="det-modal" @click.self="closeReport">
+          <div class="det-modal-panel" role="dialog" aria-modal="true" aria-label="智能质检报告">
+            <header class="det-modal-head">
+              <div class="det-modal-title">
+                <span class="det-modal-eyebrow">智能质检报告</span>
+                <code class="det-modal-id">{{ taskId }}</code>
+              </div>
+              <span class="det-grow"></span>
+              <button class="det-modal-x" type="button" aria-label="关闭" @click="closeReport">×</button>
+            </header>
+            <div class="det-modal-body">
+              <p v-if="repLoading" class="det-modal-note"><span class="det-modal-spin"></span>报告内容加载中…</p>
+              <p v-else-if="repText === ''" class="det-modal-note">报告内容为空或加载失败。</p>
+              <MarkdownView v-else-if="repText" :text="repText" doc />
+            </div>
+            <footer class="det-modal-foot">
+              <span class="det-modal-foot-hint">完整报告与缺陷明细可在任务中心查看</span>
+              <button class="det-modal-cta" type="button" @click="goTaskDetail">打开任务详情</button>
+            </footer>
+          </div>
+        </div>
+      </Teleport>
       <button class="det-report-link" type="button" @click="openTaskDetail(taskId)">打开任务详情 →</button>
       <p class="det-card-cta">如需查看缺陷明细或复核标注，随时告诉我。</p>
     </template>
@@ -291,48 +326,59 @@ const docEngine = computed<string>(() => {
       <p class="det-card-cta">想套用自定义 .pptx 模板或逐页编辑大纲？前往「能力中心 · PPT 制作」（聊天内暂不支持）。</p>
     </template>
 
-    <!-- ===== 任务创建卡 / 完成卡：整卡可点直达任务详情 ===== -->
-    <template v-else-if="type === 'task_card' || type === 'done_card'">
+    <!-- ===== 任务派发回执：一行事实（实时进度见线程底部任务舱） ===== -->
+    <template v-else-if="type === 'task_card'">
+      <div
+        class="det-task-receipt"
+        :class="'st-' + receiptTone"
+        :title="genericText"
+        role="button"
+        tabindex="0"
+        @click="openTaskDetail(taskId)"
+        @keydown="onCardKey"
+      >
+        <span class="det-receipt-dot" aria-hidden="true"></span>
+        <strong class="det-receipt-label">{{ receiptText }}</strong>
+        <span class="det-card-task">{{ taskId }}</span>
+        <span class="det-receipt-meta">
+          <span v-if="p.scene">{{ sceneCodeToLabel(p.scene) }}</span>
+          <span v-if="p.mode">{{ modeLabel(p.mode) }}</span>
+          <span v-if="typeof p.image_count === 'number'">{{ p.image_count }} 张图</span>
+        </span>
+        <span class="det-grow"></span>
+        <span class="det-receipt-go">查看详情 →</span>
+      </div>
+    </template>
+
+    <!-- ===== 完成卡：整卡可点直达任务详情 ===== -->
+    <template v-else-if="type === 'done_card'">
       <div
         class="det-navcard"
-        :class="{ 'is-running': taskRunning }"
         role="button"
         tabindex="0"
         @click="openTaskDetail(taskId)"
         @keydown="onCardKey"
       >
         <div class="det-card-head">
-          <strong :class="{ danger: type === 'done_card' && p.status === 'failed' }">{{ title }}</strong>
+          <strong :class="{ danger: p.status === 'failed' }">{{ title }}</strong>
           <span class="det-card-task">{{ taskId }}</span>
-          <span class="det-card-status" :data-status="navStatus">{{ statusLabel(navStatus) }}</span>
+          <span v-if="!headStamped" class="det-card-status" :data-status="navStatus">{{ statusLabel(navStatus) }}</span>
+          <GradeStamp v-if="headStamped" :level="p.grade_level" size="sm" />
         </div>
         <div class="det-card-meta">
           <span v-if="p.scene">场景 {{ sceneCodeToLabel(p.scene) }}</span>
           <span v-if="p.mode">模式 {{ modeLabel(p.mode) }}</span>
           <span v-if="typeof p.image_count === 'number'">图片 {{ p.image_count }} 张</span>
         </div>
-        <!-- 任务卡进度：运行中不定长滑动 + 秒表；落定后停走并转终态 -->
-        <div
-          v-if="taskRunning || taskSettled"
-          class="det-task-running"
-          :class="{ settled: taskSettled, 'st-failed': taskSettled && finalStatus === 'failed', 'st-review': taskSettled && finalStatus === 'awaiting_review' }"
-        >
-          <span class="det-task-bar" aria-hidden="true"><i></i></span>
-          <span class="det-task-elapsed">{{ taskRunning ? ('已运行 ' + taskElapsedText + ' · 正在等待算法结果…') : settledText }}</span>
-        </div>
-        <template v-if="type === 'done_card'">
-          <p v-if="p.status === 'failed'" class="det-done-error">⚠ {{ p.error_message || '任务执行失败' }}</p>
-          <template v-else>
-            <div class="det-card-meta">
-              <span v-if="typeof p.defect_count === 'number'">检出 {{ p.defect_count }} 项</span>
-              <span v-if="p.grade_level" class="det-grade" :data-level="p.grade_level">综合判级：{{ gradeLabel(p.grade_level) }}</span>
-            </div>
-            <p v-if="p.grade_summary" class="det-card-text">{{ p.grade_summary }}</p>
-            <p class="det-card-cta">如需查看缺陷明细或复核标注，随时告诉我。</p>
-          </template>
+        <p v-if="p.status === 'failed'" class="det-done-error">⚠ {{ p.error_message || '任务执行失败' }}</p>
+        <template v-else>
+          <div class="det-card-meta">
+            <span v-if="typeof p.defect_count === 'number'">检出 {{ p.defect_count }} 项</span>
+          </div>
+          <p v-if="p.grade_summary" class="det-card-text">{{ p.grade_summary }}</p>
+          <p class="det-card-cta">如需查看缺陷明细或复核标注，随时告诉我。</p>
         </template>
-        <p v-else-if="genericText" class="det-card-text">{{ genericText }}</p>
-        <div class="det-nav-go">{{ type === 'done_card' ? '查看详情 →' : (taskRunning ? '任务执行中，落定后自动推送完成卡 · 查看详情 →' : (taskSettled ? '任务已落定 · 查看详情 →' : '任务已派发 · 查看详情 →')) }}</div>
+        <div class="det-nav-go">查看详情 →</div>
       </div>
     </template>
 

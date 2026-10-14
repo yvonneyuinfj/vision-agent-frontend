@@ -17,9 +17,10 @@ const antTheme = computed(() =>
 watch(
   () => route.path,
   (path) => {
-    document.body.classList.toggle('center-page', path === '/capabilities' || path === '/detection' || path === '/tasks' || path === '/knowledge' || path === '/tools' || path === '/admin' || path.startsWith('/report'));
+    const inTasks = path === '/tasks' || path.startsWith('/tasks/');
+    document.body.classList.toggle('center-page', path === '/capabilities' || path === '/detection' || inTasks || path === '/knowledge' || path === '/tools' || path === '/admin' || path.startsWith('/report'));
     document.body.classList.toggle('detection-page', path === '/detection');
-    document.body.classList.toggle('task-page', path === '/tasks');
+    document.body.classList.toggle('task-page', inTasks);
     document.body.classList.toggle('knowledge-page', path === '/knowledge');
     document.body.classList.toggle('report-page', path.startsWith('/report'));
   },

@@ -1,6 +1,6 @@
 import { computed, reactive, watch } from 'vue';
 import * as api from '@/api/tasks';
-import type { QaTaskStats, ReviewAction } from '@/api/tasks';
+import type { QaTaskStats, QaTaskDetail, ReviewAction } from '@/api/tasks';
 import { isLive } from '@/api/source-registry';
 import {
   capabilityToSceneCode, sceneCodeToCapabilityId, sceneCodeToLabel,
@@ -17,10 +17,25 @@ const SAMPLES_KEY = 'va-task-samples-v1';
 
 export type TaskTab = 'list' | 'create' | 'review' | 'samples' | 'reports';
 
+/** 复核结论展示口径：approve=同意判级 / revised=改判修正 / return=驳回终止。 */
+export type ReviewVerdict = 'approve' | 'revised' | 'return';
+
 export interface ReviewRecord {
-  verdict: 'approve' | 'return';
+  verdict: ReviewVerdict;
   note: string;
   time: number;
+  /** 后端原始 action（confirm/revise/reject/auto_confirm） */
+  action?: string;
+  /** 后端留痕的判级结果（confirmed/revised/rejected/auto_confirm） */
+  gradingResult?: string;
+}
+
+/** 复核提交决定（与后端 ReviewRequest 对齐；requeue 后端未支持，故不开放）。 */
+export interface ReviewDecisionInput {
+  action: Exclude<ReviewAction, 'requeue'>;
+  opinion: string;
+  override_grade?: Partial<api.QaGradeInfo> | null;
+  defects?: api.QaDefectItem[] | null;
 }
 
 function load<T>(key: string, fallback: T): T {
@@ -104,9 +119,10 @@ function mockTaskList(): DetectionTask[] {
   return merged.map((t) => {
     const r = store.reviews[t.id];
     if (!r) return t;
-    return r.verdict === 'approve'
-      ? { ...t, status: 'done' as TaskStatus, reportType: t.reportType ?? ('single' as ReportType) }
-      : { ...t, status: 'pending' as TaskStatus };
+    // 与后端终态语义对齐：通过/改判走报告落定，驳回终止为失败（不是“留在待复核”）
+    return r.verdict === 'return'
+      ? { ...t, status: 'failed' as TaskStatus }
+      : { ...t, status: 'done' as TaskStatus, reportType: t.reportType ?? ('single' as ReportType) };
   });
 }
 
@@ -138,16 +154,34 @@ export async function refreshTasks(): Promise<void> {
 export async function ensureDetail(taskId: string): Promise<void> {
   if (!isLive('tasks.detail') || !taskId) return;
   if (taskId in store.details) return;
+  await refreshDetail(taskId);
+}
+
+/** 强制重取任务详情（绕缓存）：复核受理、重试、轮询等状态会变的操作后用。 */
+export async function refreshDetail(taskId: string): Promise<QaTaskDetail | null> {
+  if (!isLive('tasks.detail') || !taskId) return null;
   try {
     store.details[taskId] = await api.fetchTaskDetail(taskId);
   } catch {
     store.details[taskId] = null;
   }
+  return store.details[taskId];
 }
 
 /** 原始任务详情：undefined = 尚未加载；null = 读取失败；对象 = 已加载。供详情弹窗直读全字段。 */
 export function taskDetailOf(taskId: string): api.QaTaskDetail | null | undefined {
   return store.details[taskId];
+}
+
+/** 轮询专用：只在成功时覆盖缓存，失败保留上一次快照。
+ *  区别于 refreshDetail（失败写 null）：一次网络抖动不应让步骤进度条闪没。 */
+export async function pollDetail(taskId: string): Promise<void> {
+  if (!isLive('tasks.detail') || !taskId) return;
+  try {
+    store.details[taskId] = await api.fetchTaskDetail(taskId);
+  } catch {
+    /* 保留旧值：下一轮轮询自然补上 */
+  }
 }
 
 /* ================= 文档（PPT）任务详情弹窗 =================
@@ -282,18 +316,35 @@ export function resultFor(taskId: string): TaskResult {
   };
 }
 
-/** 复核记录：真实从详情 review 派生，开发期从本地 reviews。 */
+/** 复核记录：仅当 review 通道带真实人工决定（action）才算已复核；
+ *  待复核任务存的是复核门中断载荷（question/grade/candidates），无 action。 */
 export function reviewOf(taskId: string): ReviewRecord | undefined {
   if (isLive('tasks.detail')) {
     const rv = store.details[taskId]?.review;
-    if (!rv) return undefined;
+    if (!rv || !rv.action) return undefined;
     return {
-      verdict: rv.action === 'confirm' ? 'approve' : 'return',
+      verdict: verdictOfAction(rv.action),
       note: rv.opinion || '',
       time: rv.reviewed_at ? Date.parse(rv.reviewed_at) : Date.now(),
+      action: rv.action,
+      gradingResult: rv.grading_result,
     };
   }
   return store.reviews[taskId];
+}
+
+function verdictOfAction(action: string): ReviewVerdict {
+  if (action === 'reject') return 'return';
+  if (action === 'revise') return 'revised';
+  return 'approve';
+}
+
+/** 复核门中断载荷（question / grade / candidates / artifacts）；已复核或无载荷返回 null。 */
+export function reviewInterruptOf(taskId: string): api.QaReviewInfo | null {
+  if (!isLive('tasks.detail')) return null;
+  const rv = store.details[taskId]?.review;
+  if (!rv || rv.action) return null;
+  return rv;
 }
 
 /** 复核主图（真实模式第一张输入图）；开发期或无图返回 null。
@@ -339,18 +390,87 @@ export async function createTask(input: {
   return { id: task.id };
 }
 
-/** 提交复核：真实走 POST /tasks/{id}/review，开发期写本地。 */
-export async function submitReview(taskId: string, verdict: ReviewRecord['verdict'], note: string): Promise<void> {
+/** 提交复核决定：真实走 POST /tasks/{id}/review，开发期写本地。
+ *  后端为「即时受理 + 后台恢复」：接口返回仅表示受理成功（状态已翻 running），
+ *  报告与终态需再轮询详情获得（见 pollTaskUntilSettled）。 */
+export async function submitReviewDecision(taskId: string, input: ReviewDecisionInput): Promise<void> {
   if (isLive('tasks.review')) {
-    const action: ReviewAction = verdict === 'approve' ? 'confirm' : 'reject';
-    await api.reviewTask(taskId, { action, opinion: note });
-    // 详情失效重取 + 刷新列表
-    delete store.details[taskId];
-    await Promise.all([ensureDetail(taskId), refreshTasks()]);
+    await api.reviewTask(taskId, {
+      action: input.action,
+      opinion: input.opinion ?? '',
+      override_grade: input.override_grade ?? null,
+      defects: input.defects ?? null,
+    });
+    await Promise.all([refreshDetail(taskId), refreshTasks()]);
     return;
   }
-  store.reviews[taskId] = { verdict, note, time: Date.now() };
+  store.reviews[taskId] = {
+    verdict: verdictOfAction(input.action),
+    note: input.opinion || '',
+    time: Date.now(),
+    action: input.action,
+    gradingResult: input.action === 'confirm' ? 'confirmed' : input.action === 'revise' ? 'revised' : 'rejected',
+  };
   store.tasks = mockTaskList();
+}
+
+/** 兼容旧签名（检测页复核卡）：approve→confirm，return→reject。
+ *  注意 reject 在后端是「驳回并终止」（任务落失败终态），不是退回重排队。 */
+export async function submitReview(taskId: string, verdict: 'approve' | 'return', note: string): Promise<void> {
+  await submitReviewDecision(taskId, { action: verdict === 'approve' ? 'confirm' : 'reject', opinion: note });
+}
+
+/** 场景歧义人工确认（POST /tasks/{id}/scene-confirm）：此类任务走复核门的
+ *  场景中断分支，用 review 接口会被 409 拒绝。 */
+export async function confirmScene(taskId: string, scene: string, opinion = ''): Promise<void> {
+  if (isLive('tasks.sceneConfirm')) {
+    await api.confirmScene(taskId, scene, opinion);
+    await Promise.all([refreshDetail(taskId), refreshTasks()]);
+    return;
+  }
+  store.reviews[taskId] = {
+    verdict: 'approve', note: `场景确认：${sceneCodeToLabel(scene)}`, time: Date.now(),
+    action: 'scene_confirm', gradingResult: 'scene_confirmed',
+  };
+  store.tasks = mockTaskList();
+}
+
+export interface PollOutcome {
+  /** 后端原始状态码（completed/failed/canceled/…） */
+  status: string;
+  detail: api.QaTaskDetail | null;
+  /** 是否真正落定（false = 超时仍在执行，需用户手动刷新） */
+  settled: boolean;
+}
+
+const SETTLED_STATUS = new Set(['completed', 'failed', 'canceled']);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** 提交后轮询任务直至落定：复核恢复（含报告生成）后台执行可达分钟级，
+ *  不能拿受理响应当终态。超时不报错，返回 settled=false 交给视图提示。 */
+export async function pollTaskUntilSettled(
+  taskId: string,
+  opts?: { timeoutMs?: number; intervalMs?: number; onTick?: (status: string) => void },
+): Promise<PollOutcome> {
+  const { timeoutMs = 90_000, intervalMs = 1_500, onTick } = opts ?? {};
+  if (!isLive('tasks.detail')) {
+    const t = store.tasks.find((x) => x.id === taskId);
+    const status = t?.status === 'done' ? 'completed' : t?.status === 'failed' ? 'failed' : (t?.status ?? '');
+    onTick?.(status);
+    return { status, detail: null, settled: true };
+  }
+  const deadline = Date.now() + timeoutMs;
+  let detail = await refreshDetail(taskId);
+  let status = detail?.status ?? '';
+  onTick?.(status);
+  while (!SETTLED_STATUS.has(status) && Date.now() < deadline) {
+    await sleep(intervalMs);
+    detail = await refreshDetail(taskId);
+    status = detail?.status ?? status;
+    onTick?.(status);
+  }
+  await refreshTasks();
+  return { status, detail, settled: SETTLED_STATUS.has(status) };
 }
 
 /** 样本推进一档状态(待标注 → 已标注 → 已入数据集)（本地演示，阶段一保持） */

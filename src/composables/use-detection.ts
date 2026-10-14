@@ -1,7 +1,9 @@
-import { computed, reactive } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { capabilities } from '@/data';
 import type { ProfessionalCapability } from '@/data/types';
 import { capabilityToSceneCode } from '@/data/scene-map';
+import { deriveStageProgress, type StageProgress } from '@/data/inspection-stages';
+import { pollDetail, taskDetailOf } from '@/composables/use-tasks';
 import { ragflowEnabled } from '@/api/ragflow';
 import * as agent from '@/api/agent';
 import type { StreamFrame } from '@/api/agent';
@@ -19,6 +21,7 @@ export interface DetItem {
   result?: any;
   done?: boolean;
   isError?: boolean;
+  doneAt?: number;
   // card(生命周期卡片)
   cardType?: string;
   taskId?: string;
@@ -52,6 +55,8 @@ const store = reactive({
   // 这些卡片"只推不改"，因此助手文本回复结束后，后台任务可能仍在跑几分钟；
   // 用这个集合把"任务仍在执行"纳入运行中判定，避免用户误以为系统已停止。
   runningTaskIds: [] as string[],
+  // 最近一次发送的参数快照，供"失败重试"重发（不区分来自首页还是检测页）。
+  lastSend: null as { content: string; files: File[]; scene: string } | null,
 });
 
 /** 当前会话消息流的关闭句柄(切换会话/新建/卸载时调用)。 */
@@ -75,15 +80,80 @@ function anyWorking(): boolean {
 }
 
 /** 智能体是否仍在运行(用于驱动等待反馈指示器)。
- *  既覆盖消息流回合(发送/思考/工具/生成)，也覆盖回合结束后仍在后台执行的检测任务。 */
+ *  既覆盖消息流回合(发送/思考/工具/生成)，也覆盖回合结束后仍在后台执行的检测任务。
+ *  注意：这是"能否再发起一次生成"的门禁口径，不因展示层拆分而放宽。 */
 export const agentBusy = computed(
   () => store.sending || store.turnPending || anyWorking() || store.runningTaskIds.length > 0,
+);
+
+/** 本回合是否仍在生成（不含后台长任务）。
+ *  驱动线程底部的三点工作条；后台任务改由独立的"任务舱"呈现，
+ *  避免同一秒表在卡片与工作条里出现两份、语义还互相矛盾。 */
+export const agentTurnBusy = computed(
+  () => store.sending || store.turnPending || anyWorking(),
+);
+
+/** 正在后台跑的检测任务视图模型：供底部任务舱逐条呈现。
+ *  startedAt 取派发卡（task_card）的落卡时间，多任务顺序跟随 runningTaskIds；
+ *  不额外维护第二份状态，卡片被终态卡顶掉时自然从舱里消失。 */
+export interface RunningTaskVM {
+  taskId: string;
+  scene: string;
+  startedAt: number;
+}
+export const runningTaskCards = computed<RunningTaskVM[]>(() =>
+  store.runningTaskIds.map((id) => {
+    const card = store.items.find(
+      (it) => it.kind === 'card' && it.cardType === 'task_card' && it.taskId === id,
+    );
+    return {
+      taskId: id,
+      scene: String(card?.payload?.scene ?? ''),
+      startedAt: card?.time ?? Date.now(),
+    };
+  }),
 );
 
 /** 某任务当前是否仍在执行(running 卡未被终态卡覆盖)。 */
 export function isTaskRunning(taskId: string): boolean {
   return !!taskId && store.runningTaskIds.includes(taskId);
 }
+
+/* ================= 后台任务阶段进度 =================
+ * 节点级执行痕迹（append_step → steps_json）被会话流故意挡掉（on_task_step 只转发 chain），
+ * 因此只能从 GET /tasks/{id} 的 steps + status 推导。详情快照复用 use-tasks 的
+ * store.details：任务舱与详情弹窗读同一份数据，轮询一次两处同步刷新。 */
+export function stageProgressOf(taskId: string): StageProgress | null {
+  if (!taskId) return null;
+  const d = taskDetailOf(taskId);
+  if (!d) return null;
+  return deriveStageProgress(d.steps, d.status);
+}
+
+/** 在跑任务的阶段进度（任务舱直读）；详情未到货则为 null（退化为无步骤条）。 */
+export const taskProgress = computed<Record<string, StageProgress | null>>(() => {
+  const m: Record<string, StageProgress | null> = {};
+  for (const t of runningTaskCards.value) m[t.taskId] = stageProgressOf(t.taskId);
+  return m;
+});
+
+const POLL_INTERVAL_MS = 5000;
+let _pollTimer: ReturnType<typeof setInterval> | undefined;
+
+function pollRunningTasks() {
+  for (const id of [...store.runningTaskIds]) void pollDetail(id);
+}
+
+/* 有在跑任务就开轮询，清空即停；新任务落卡时立刻补一次拉取，不让首个阶段空等 5s。 */
+watch(
+  () => [...store.runningTaskIds],
+  (ids, prev) => {
+    const known = new Set(prev ?? []);
+    for (const id of ids) if (!known.has(id)) void pollDetail(id);
+    if (ids.length && !_pollTimer) _pollTimer = setInterval(pollRunningTasks, POLL_INTERVAL_MS);
+    if (!ids.length && _pollTimer) { clearInterval(_pollTimer); _pollTimer = undefined; }
+  },
+);
 
 /** 从线程内已落定的终态卡反查任务最终状态；未落定返回 null。
  *  done_card 取 payload.status；review_card 视为 awaiting_review；report_card 视为 completed。 */
@@ -116,15 +186,9 @@ function trackRunningCard(cardType: string | undefined, taskId: unknown, status:
   }
 }
 
-/** 当前运行阶段文案；无明确阶段时按"是否有在跑任务"给出兜底文案。 */
-export const agentPhase = computed(() => {
-  if (store.runPhase) return store.runPhase;
-  if (store.runningTaskIds.length > 0)
-    return store.runningTaskIds.length > 1
-      ? `${store.runningTaskIds.length} 个检测任务执行中，正在等待算法结果…`
-      : '检测任务执行中，正在等待算法结果…';
-  return '智能体正在处理…';
-});
+/** 当前回合阶段文案；无明确阶段时给兜底文案。
+ *  后台长任务不在此列——它的可见性由底部任务舱负责，这里只说"智能体本身在干什么"。 */
+export const agentPhase = computed(() => store.runPhase || '智能体正在处理…');
 
 /* 看门狗：若长时间(默认 60s)既无任何新帧、也没有进行中的活动项，
  * 则视为本轮已结束，防止 SSE 静默断开等异常导致"运行中"永远不消失。
@@ -147,7 +211,11 @@ function stopStream() {
   clearWatchdog();
   if (closeStream) { closeStream(); closeStream = null; }
 }
-export { stopStream as teardownDetection }
+/** 页面卸载：关消息流 + 停阶段进度轮询（没人看了就别接着打接口）。 */
+export function teardownDetection(): void {
+  stopStream();
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = undefined; }
+}
 
 /* ================= 帧 reducer(仅远程模式) ================= */
 function findIndex(id: string): number {
@@ -197,7 +265,7 @@ function applyFrame(frame: StreamFrame) {
       it.args = frame.args ?? it.args;
       it.taskId = frame.task_id ?? it.taskId;
       if (frame.event === 'tool_result') {
-        it.result = frame.content; it.done = true; it.isError = !!frame.is_error; it.streaming = false;
+        it.result = frame.content; it.done = true; it.isError = !!frame.is_error; it.streaming = false; it.doneAt = Date.now();
         if (!anyWorking()) store.runPhase = '正在分析工具返回…';
       } else {
         it.done = false;
@@ -344,6 +412,7 @@ async function sendRemote(content: string, files: File[], scene = '') {
   store.sending = true;
   store.runPhase = '正在发送请求…';
   store.error = '';
+  store.lastSend = { content, files, scene }; // 快照供 retryLast 重发
   try {
     let id = store.activeId;
     if (!id) {
@@ -366,6 +435,21 @@ async function sendRemote(content: string, files: File[], scene = '') {
   } finally {
     store.sending = false;
   }
+}
+
+/** 失败重试：重发最近一条请求（仅在远程模式且有快照时）。 */
+export async function retryLast(): Promise<void> {
+  const l = store.lastSend;
+  if (!isRemote || !l || store.sending) return;
+  await sendRemote(l.content, l.files, l.scene);
+}
+
+/** 重新生成：重发最近一条请求，追加一条新回答。
+ *  （后端无“替换上一条”/取消接口，故为“再次发问”语义；任一活动进行中则不触发。） */
+export async function regenerateLast(): Promise<void> {
+  const l = store.lastSend;
+  if (!isRemote || !l || store.sending || store.turnPending || anyWorking() || store.runningTaskIds.length) return;
+  await sendRemote(l.content, l.files, l.scene);
 }
 
 /* ================= 任务详情弹窗（卡片点击就地查看，不跳出本页） ================= */

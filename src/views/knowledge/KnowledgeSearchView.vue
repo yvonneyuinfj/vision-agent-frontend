@@ -29,7 +29,7 @@ const lastTrace = computed(() => {
 
 const modeLabel = computed(() => {
   if (!remote) return '本地演示模式';
-  if (connection.status === 'error') return '后端异常 · 已回退演示';
+  if (connection.status === 'error') return '后端异常  已回退演示';
   return '已连接 quality-agent';
 });
 

@@ -5,7 +5,7 @@ import IconSvg from '@/components/IconSvg.vue';
 import TaskDetailModal from '@/components/TaskDetailModal.vue';
 import DocumentDetailModal from '@/components/DocumentDetailModal.vue';
 import { setTheme, useTheme, activeNav } from '@/composables/use-theme';
-import { activeTab, refreshTasks, tasksLive, loading, setFocusTask } from '@/composables/use-tasks';
+import { activeTab, refreshTasks, tasksLive, loading, setFocusTask, reviewableTasks } from '@/composables/use-tasks';
 import type { TaskTab } from '@/composables/use-tasks';
 import TaskListView from './TaskListView.vue';
 
@@ -19,6 +19,16 @@ setTheme(route.query.theme === 'dark' ? 'dark' : 'light');
 const VALID_TABS: TaskTab[] = ['list'];
 onMounted(() => {
   activeNav.value = '任务中心';
+  // 旧深链兼容：检测卡片 / 详情弹窗曾用 ?tab=review，复核工作台已改为独立路由页，这里就地重定向
+  const qtab = route.query.tab;
+  if (qtab === 'review') {
+    const qtask = route.query.task;
+    void router.replace({
+      path: '/tasks/review',
+      query: { ...(typeof qtask === 'string' && qtask ? { task: qtask } : {}), ...(dark.value ? { theme: 'dark' } : {}) },
+    });
+    return;
+  }
   // 深链：智能检测卡片跳转携带 ?tab=&task=，预选任务后落到列表
   const qtask = route.query.task;
   if (typeof qtask === 'string' && qtask) setFocusTask(qtask);
@@ -31,6 +41,11 @@ const homeQuery = computed(() => (dark.value ? { theme: 'dark' as const } : {}))
 /* 新建任务 → 跳转智能检测对话框（复用深蓝主题） */
 function goDetection() {
   void router.push({ path: '/detection', query: homeQuery.value });
+}
+
+/* 复核工作台 → 独立路由页（可带 task 深链定位具体任务） */
+function goReview(taskId?: string) {
+  void router.push({ path: '/tasks/review', query: { ...(taskId ? { task: taskId } : {}), ...homeQuery.value } });
 }
 
 const tabs: { key: TaskTab; label: string }[] = [
@@ -55,6 +70,9 @@ const tabs: { key: TaskTab; label: string }[] = [
         <!-- <button class="task-action-btn" type="button" :disabled="loading" @click="refreshTasks">
           <IconSvg name="refresh" /><span>刷新</span>
         </button> -->
+        <button class="task-action-btn" type="button" :class="{ 'has-queue': reviewableTasks.length > 0 }" @click="goReview(reviewableTasks[0]?.id)">
+          <IconSvg name="shield" /><span>复核{{ reviewableTasks.length ? ` (${reviewableTasks.length})` : '' }}</span>
+        </button>
         <button class="task-action-btn primary" type="button" @click="goDetection">
           <span>+</span>新建任务
         </button>

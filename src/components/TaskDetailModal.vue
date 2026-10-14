@@ -6,8 +6,12 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import IconSvg from '@/components/IconSvg.vue';
 import MarkdownView from '@/components/MarkdownView.vue';
-import { detailModalOpen, detailModalTaskId, closeTaskDetail } from '@/composables/use-detection';
+import GradeStamp from '@/components/GradeStamp.vue';
+import StageStepper from '@/components/StageStepper.vue';
+import { detailModalOpen, detailModalTaskId, closeTaskDetail, stageProgressOf } from '@/composables/use-detection';
+import { STAGE_COUNT, nodeLabel } from '@/data/inspection-stages';
 import { ensureDetail, taskDetailOf, tasksLive } from '@/composables/use-tasks';
+import { useTheme } from '@/composables/use-theme';
 import { openImagePreview, previewOpen } from '@/composables/use-image-preview';
 import { fileNameFromUri } from '@/api/tasks';
 
@@ -22,11 +26,6 @@ const STATUS_LABEL: Record<string, string> = {
   completed: '已完成', failed: '失败', canceled: '已取消',
 };
 const statusLabel = (s: string) => STATUS_LABEL[s] || s;
-const GRADE_LABEL: Record<string, string> = {
-  pass: '合格', defect: '检出缺陷', review: '待复核', fail: '不合格',
-  A: 'A 级', B: 'B 级', C: 'C 级', D: 'D 级',
-};
-const gradeLabel = (g: unknown) => { const k = String(g ?? ''); return GRADE_LABEL[k] || k; };
 const SEV_LABEL: Record<string, string> = { low: '轻微', medium: '中等', high: '严重' };
 
 function confPct(d: any): number | null {
@@ -45,8 +44,30 @@ const images = computed(() => {
   return (d.input_uris || []).map((uri) => ({ src: uri, name: fileNameFromUri(uri) }));
 });
 const defects = computed<any[]>(() => (detail.value?.standardized || []).filter((x) => !x.human_rejected));
-const steps = computed<any[]>(() => detail.value?.steps || []);
 const report = computed(() => detail.value?.report || null);
+
+/* ---------- 流程阶段：与检测页任务舱同一推导口径（共用 store.details 快照） ---------- */
+const progress = computed(() => (taskId.value ? stageProgressOf(taskId.value) : null));
+
+function fmtTs(ts: string): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? ts : d.toLocaleTimeString('zh-CN', { hour12: false });
+}
+
+/** 执行轨迹：只留流程骨架。思考链行的 message 是整段 JSON，工具逐次留痕会刷屏，
+ *  两者从列表里拿掉，工具调用折叠成一行计数（细节看会话里的思考链）。 */
+const traceSteps = computed<Array<{ node: string; label: string; message: string; ts: string }>>(() =>
+  (detail.value?.steps || [])
+    .filter((s) => s.node !== 'chain' && !String(s.node).startsWith('tool:'))
+    .map((s) => ({
+      node: s.node,
+      label: nodeLabel(String(s.node)),
+      message: String(s.message || ''),
+      ts: fmtTs(String(s.ts || '')),
+    })));
+const toolCallCount = computed(() =>
+  (detail.value?.steps || []).filter((s) => String(s.node).startsWith('tool:')).length);
 
 /* 裂图占位：记录加载失败的缩略图索引 */
 const imgFailed = ref<Set<number>>(new Set());
@@ -73,10 +94,19 @@ async function toggleReport() {
 
 function openInTaskCenter() {
   if (!taskId.value) return;
-  const tab = detail.value?.status === 'awaiting_review' ? 'review' : 'reports';
-  void router.push({ path: '/tasks', query: { tab, task: taskId.value } });
+  const themeQuery = useTheme().value === 'dark' ? { theme: 'dark' as const } : {};
+  // 待复核 → 复核工作台（独立路由）；其余 → 任务中心列表
+  if (detail.value?.status === 'awaiting_review') {
+    void router.push({ path: '/tasks/review', query: { task: taskId.value, ...themeQuery } });
+  } else {
+    void router.push({ path: '/tasks', query: { task: taskId.value, ...themeQuery } });
+  }
   closeTaskDetail();
 }
+
+const ctaLabel = computed(() => (detail.value?.status === 'awaiting_review' ? '前往复核工作台 →' : '在任务中心打开 →'));
+const footHint = computed(() =>
+  (detail.value?.status === 'awaiting_review' ? '待复核任务需人工终裁，报告才会生成' : '完整列表筛选与报告归档请前往任务中心'));
 
 function onKey(e: KeyboardEvent) {
   // 灯箱在顶层时，Esc 交给灯箱处理，不关本弹窗
@@ -106,14 +136,20 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         <p v-else-if="detail === null" class="det-modal-note">任务详情读取失败，请稍后重试或在任务中心打开。</p>
 
         <template v-else-if="detail">
+          <!-- 检测流程：六段式阶段总览（轮询任务执行痕迹推导，弹窗打开期间同步刷新） -->
+          <section v-if="progress" class="det-mdl-sec">
+            <h4>检测流程 <span class="det-mdl-count">{{ progress.current + 1 }}/{{ STAGE_COUNT }}</span></h4>
+            <StageStepper :progress="progress" />
+          </section>
+
           <!-- 判级 / 错误 -->
           <div v-if="detail.error" class="det-mdl-callout is-error">
-            <span class="det-mdl-callout-hd">执行失败 · {{ detail.error.node }}</span>
+            <span class="det-mdl-callout-hd">执行失败 · {{ nodeLabel(detail.error.node) }}</span>
             <p>{{ detail.error.message }}</p>
           </div>
-          <div v-else-if="detail.grade" class="det-mdl-callout" :class="'lvl-' + (detail.grade.level || '')">
-            <span class="det-mdl-callout-hd"><IconSvg name="check" />综合判级 · {{ gradeLabel(detail.grade.level) }}</span>
-            <p>{{ detail.grade.summary || '暂无判级摘要' }}</p>
+          <div v-else-if="detail.grade" class="det-mdl-grade">
+            <p class="det-mdl-grade-sum">{{ detail.grade.summary || '暂无判级摘要' }}</p>
+            <GradeStamp :level="detail.grade.level" />
           </div>
 
           <!-- 输入图像 -->
@@ -158,12 +194,16 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </section>
 
           <!-- 执行轨迹 -->
-          <section v-if="steps.length" class="det-mdl-sec">
-            <h4>执行轨迹 <span class="det-mdl-count">{{ steps.length }}</span></h4>
+          <section v-if="traceSteps.length" class="det-mdl-sec">
+            <h4>
+              执行轨迹 <span class="det-mdl-count">{{ traceSteps.length }}</span>
+              <span v-if="toolCallCount" class="det-mdl-sub">含 {{ toolCallCount }} 次工具调用</span>
+            </h4>
             <ol class="det-mdl-steps">
-              <li v-for="(s, i) in steps" :key="i">
-                <span class="det-mdl-node">{{ s.node }}</span>
+              <li v-for="(s, i) in traceSteps" :key="i">
+                <span class="det-mdl-node">{{ s.label }}</span>
                 <span class="det-mdl-msg">{{ s.message }}</span>
+                <span v-if="s.ts" class="det-mdl-ts">{{ s.ts }}</span>
               </li>
             </ol>
           </section>
@@ -181,7 +221,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <div v-show="repOpen" class="det-report-doc-body">
                 <p v-if="repLoading" class="det-report-tip">报告内容加载中…</p>
                 <p v-else-if="repText === ''" class="det-report-tip">报告内容为空或加载失败。</p>
-                <MarkdownView v-else-if="repText" :text="repText" />
+                <MarkdownView v-else-if="repText" :text="repText" doc />
               </div>
             </div>
           </section>
@@ -189,8 +229,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       </div>
 
       <footer class="det-modal-foot">
-        <span class="det-modal-foot-hint">完整复核与研判请前往任务中心</span>
-        <button class="det-modal-cta" type="button" @click="openInTaskCenter">在任务中心打开 →</button>
+        <span class="det-modal-foot-hint">{{ footHint }}</span>
+        <button class="det-modal-cta" type="button" @click="openInTaskCenter">{{ ctaLabel }}</button>
       </footer>
     </div>
   </div>

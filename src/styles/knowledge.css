@@ -2069,6 +2069,18 @@ h4.md-h, h5.md-h, h6.md-h { font-size: 14px }
     color: var(--c-ink);
     white-space: pre
 }
+.md-pre-wrap { position: relative; }
+.md-copy {
+    position: absolute; top: 8px; right: 8px; z-index: 1;
+    font: inherit; font-size: 11.5px; line-height: 1;
+    color: var(--c-muted, #64748b); background: var(--c-panel, #fff);
+    border: 1px solid var(--c-line, #d8dfe8); border-radius: 6px;
+    padding: 4px 8px; cursor: pointer;
+    opacity: 0; transition: opacity .15s, color .15s, border-color .15s;
+}
+.md-pre-wrap:hover .md-copy, .md-copy:focus-visible { opacity: 1; }
+.md-copy:hover { color: var(--c-blue, #1d4ed8); border-color: var(--c-blue, #1d4ed8); }
+.md-copy.is-done { color: #1f9d57; border-color: #b7e2c4; opacity: 1; }
 
 .md-quote {
     margin: 0 0 12px;

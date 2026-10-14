@@ -266,7 +266,7 @@ body.dark-theme .theme-toggle:hover {
     position: absolute;
     z-index: -3;
     inset: 0;
-    background: #d9eafa url('assets/panorama.png') center 98% / cover no-repeat
+    background: #d9eafa url('assets/panorama.png') center 80% / cover no-repeat
 }
 
 .panorama:before {
@@ -409,7 +409,7 @@ body.dark-theme .theme-toggle:hover {
 
 .assistant {
     position: absolute;
-    bottom: 14px;
+    bottom: 0px;
     left: 50%;
     transform: translateX(-50%);
     width: min(1000px, 66%);

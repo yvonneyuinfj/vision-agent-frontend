@@ -75,7 +75,7 @@ export const DESCRIPTORS: Record<ResourceKind, ResourceDescriptor> = {
       { key: 'provider_id', label: '配置 ID', input: 'text', required: true, isPk: true, placeholder: '如 default-openai' },
       { key: 'display_name', label: '展示名', input: 'text', placeholder: '如 通义千问生产网关' },
       { key: 'provider_kind', label: '协议类型', input: 'select', options: PROVIDER_KIND_OPTIONS },
-      { key: 'base_url', label: '服务地址', input: 'text', placeholder: 'https://dashscope.../compatible-mode/v1' },
+      { key: 'base_url', label: '服务地址', input: 'text', placeholder: '如 http://<模型网关 IP>:<端口>/v1（OpenAI 兼容）' },
       { key: 'model_name', label: '文本模型名', input: 'text', placeholder: '如 qwen-plus' },
       { key: 'vlm_model', label: '视觉模型名', input: 'text', placeholder: '如 qwen-vl-max' },
       { key: 'api_key', label: 'API Key', input: 'secret', hint: '保存后自动加密；编辑时留空/掩码表示不修改' },
@@ -100,7 +100,7 @@ export const DESCRIPTORS: Record<ResourceKind, ResourceDescriptor> = {
     fields: [
       { key: 'connection_id', label: '连接 ID', input: 'text', required: true, isPk: true, placeholder: '如 default' },
       { key: 'name', label: '展示名', input: 'text', placeholder: '如 服务器生产库' },
-      { key: 'base_url', label: 'Base URL', input: 'text', required: true, placeholder: 'http://182.92.121.228:8080' },
+      { key: 'base_url', label: 'Base URL', input: 'text', required: true, placeholder: '如 http://<RAGFlow 主机 IP>:9380' },
       { key: 'api_key', label: 'API Key', input: 'secret', hint: 'ragflow-xxxx；保存后自动加密' },
       { key: 'rerank_model', label: '重排模型', input: 'text', placeholder: '如 bge-reranker-v2-m3，留空跳过' },
       { key: 'chat_config_path', label: '对话参数配置路径', input: 'text', placeholder: './config/rules/ragflow_chat.yaml' },
@@ -123,7 +123,7 @@ export const DESCRIPTORS: Record<ResourceKind, ResourceDescriptor> = {
     fields: [
       { key: 'endpoint_id', label: '端点 ID', input: 'text', required: true, isPk: true, placeholder: '如 default-minio' },
       { key: 'name', label: '展示名', input: 'text', placeholder: '如 服务器 MinIO' },
-      { key: 'endpoint', label: 'Endpoint (host:port)', input: 'text', required: true, placeholder: '182.92.121.228:9000' },
+      { key: 'endpoint', label: 'Endpoint (host:port)', input: 'text', required: true, placeholder: '如 <对象存储 RGW IP>:9000（不带 http://）' },
       { key: 'access_key', label: 'Access Key', input: 'secret', hint: '保存后自动加密' },
       { key: 'secret_key', label: 'Secret Key', input: 'secret', hint: '保存后自动加密' },
       { key: 'bucket', label: '桶名', input: 'text', placeholder: 'vision-media-assets' },

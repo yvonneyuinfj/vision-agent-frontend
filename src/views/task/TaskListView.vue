@@ -5,11 +5,15 @@ import { message } from 'ant-design-vue';
 import IconSvg from '@/components/IconSvg.vue';
 import { capabilities } from '@/data';
 import { fetchDocument } from '@/api/tasks';
-import { sortedTasks, taskStats, loading, error, refreshTasks, tasksLive, timeKey, openDocumentDetail } from '@/composables/use-tasks';
+import { sortedTasks, taskStats, loading, error, refreshTasks, tasksLive, timeKey, openDocumentDetail, reviewableTasks } from '@/composables/use-tasks';
 import { openTaskDetail } from '@/composables/use-detection';
+import { useTheme } from '@/composables/use-theme';
 import { statusMeta, type TaskStatus, type DetectionTask } from '@/data/tasks';
 
 const router = useRouter();
+const theme = useTheme();
+/** 跨页跳转保留当前主题（深蓝主题靠 ?theme=dark 同步） */
+const themeQuery = computed(() => (theme.value === 'dark' ? { theme: 'dark' as const } : {}));
 const statusFilter = ref<TaskStatus | 'all'>('all');
 const kindFilter = ref<'all' | 'inspection' | 'document'>('all');
 const sceneFilter = ref('all');
@@ -103,12 +107,13 @@ function capMeta(capId: string) {
   return capabilities.find((c) => c.id === capId) ?? { icon: 'box', color: '#64748b', bg: '#f0f2f5', name: '' };
 }
 
-/* ---------- 状态对应操作（检测：已完成→报告页；文档：已完成→下载 PPT；其余→任务详情弹窗） ---------- */
+/* ---------- 状态对应操作（检测：已完成→报告页，待复核→复核工作台；文档：已完成→下载 PPT；其余→任务详情弹窗） ---------- */
 function actionLabel(status: TaskStatus, kind?: string): string {
-  if (status === 'done') return kind === 'document' ? '下载 PPT' : '查看报告';
+  if (kind === 'document') return status === 'done' ? '下载 PPT' : '查看详情';
+  if (status === 'done') return '查看报告';
   if (status === 'running') return '查看进度';
   if (status === 'failed') return '查看原因';
-  return '查看详情'; // pending / reviewing
+  return '去复核'; // pending / reviewing
 }
 function actionColor(status: TaskStatus, kind?: string): string {
   if (status === 'done') return kind === 'document' ? '#7c5cff' : '#2368e4';
@@ -118,6 +123,10 @@ function actionColor(status: TaskStatus, kind?: string): string {
     case 'failed': return '#e04f4f';
     default: return '#2368e4';
   }
+}
+/** 复核工作台深链：带 task 参数由工作台预选队列中的该任务 */
+function goReview(taskId: string) {
+  void router.push({ path: '/tasks/review', query: { task: taskId, ...themeQuery.value } });
 }
 async function downloadDocument(id: string) {
   try {
@@ -134,8 +143,9 @@ function primaryAction(id: string, status: TaskStatus, kind?: string, title = ''
     else openDocumentDetail(id, title);
     return;
   }
-  if (status === 'done') void router.push({ path: `/report/${encodeURIComponent(id)}` });
-  else openTaskDetail(id);
+  if (status === 'done') { void router.push({ path: `/report/${encodeURIComponent(id)}` }); return; }
+  if (status === 'pending' || status === 'reviewing') { goReview(id); return; }
+  openTaskDetail(id);
 }
 /* 行内「详情」：文档任务走 PPT 专属弹窗，检测任务走通用详情 */
 function openDetailRow(t: DetectionTask) {
@@ -191,6 +201,18 @@ function statusTagLabel(t: DetectionTask): string {
     </div>
 
     <p v-if="error" class="task-error-bar">⚠ {{ error }}</p>
+
+    <!-- 待复核提醒：命中复核门的任务可一键进入复核工作台 -->
+    <div v-if="reviewableTasks.length" class="task-review-cta">
+      <IconSvg name="shield" />
+      <div class="task-review-cta-text">
+        <strong>{{ reviewableTasks.length }} 个任务等待人工终裁</strong>
+        <span>高风险 / 低置信度结论已在复核门暂停，不复核不会生成报告。</span>
+      </div>
+      <button class="task-action-btn primary" type="button" @click="goReview(reviewableTasks[0].id)">
+        <span>＋</span>进入复核工作台
+      </button>
+    </div>
 
     <!-- 列表标题 + 过滤 -->
     <div class="task-list-header">

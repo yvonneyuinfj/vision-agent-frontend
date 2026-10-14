@@ -49,6 +49,32 @@ function renderInline(escaped: string): string {
 
 const inline = (raw: string): string => renderInline(escapeHtml(raw));
 
+/* ---------- 任务完成回报的“终判”印章（与 GradeStamp 组件同款观感，样式见 detection.css .gstamp） ---------- */
+const GRADE_LEVELS = ['pass', 'defect', 'fail', 'review'];
+const verdictHeadRe = /^\s*\*\*(.+?)·\s*终判\s*(.+?)\*\*\s*$/;
+/** 从“判级结论”引用块 `> defect——…` 取原始 level 键（最可靠）。 */
+function detectGradeLevel(src: string): string {
+  const m = />\s*(pass|defect|fail|review)\b/i.exec(src);
+  return m ? m[1].toLowerCase() : '';
+}
+/** 退化：从中文通俗名反推 level。 */
+function gradeLevelFromName(name: string): string {
+  if (/不合格/.test(name)) return 'fail';
+  if (/检出缺陷/.test(name)) return 'defect';
+  if (/复核/.test(name)) return 'review';
+  if (/合格/.test(name)) return 'pass';
+  return 'review';
+}
+/** 把 `**任务已完成 · 终判 {中文名}**` 标题行渲染为「左侧状态 + 右上角判级印章」。 */
+function renderVerdictHead(leadRaw: string, nameRaw: string, level: string): string {
+  const lead = escapeHtml(leadRaw.trim());
+  const name = escapeHtml(nameRaw.replace(/[（(][^）)]*[)）]/g, '').trim() || '判级');
+  const lv = GRADE_LEVELS.includes(level) ? level : 'review';
+  return `<p class="md-verdict"><span class="md-verdict-lead"><strong>${lead}</strong></span>`
+    + `<span class="gstamp gstamp-md" data-level="${lv}" role="img" aria-label="${name} · 综合判级 · 自动判级引擎">`
+    + `<span class="gstamp-level">${name}</span><span class="gstamp-sub">综合判级 · 自动判级引擎</span></span></p>`;
+}
+
 function splitRow(line: string): string[] {
   return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
 }
@@ -143,6 +169,14 @@ export function renderMarkdown(src: string): string {
     const line = lines[i];
     if (isBlank(line)) { i += 1; continue; }
 
+    // 任务完成回报的“终判”标题行 → 判级印章（需在段落/粗体解析前拦截）
+    const vh = verdictHeadRe.exec(line);
+    if (vh) {
+      out.push(renderVerdictHead(vh[1], vh[2], detectGradeLevel(src) || gradeLevelFromName(vh[2])));
+      i += 1;
+      continue;
+    }
+
     const fence = fenceRe.exec(line);
     if (fence) {
       const lang = fence[1];
@@ -150,7 +184,7 @@ export function renderMarkdown(src: string): string {
       i += 1;
       while (i < lines.length && !fenceEndRe.test(lines[i])) { buf.push(lines[i]); i += 1; }
       i += 1; // 跳过结束围栏
-      out.push(`<pre class="md-pre"${lang ? ` data-lang="${escapeHtml(lang)}"` : ''}><code>${escapeHtml(buf.join('\n'))}</code></pre>`);
+      out.push(`<div class="md-pre-wrap"${lang ? ` data-lang="${escapeHtml(lang)}"` : ''}><button class="md-copy" type="button" aria-label="复制代码">复制</button><pre class="md-pre"><code>${escapeHtml(buf.join('\n'))}</code></pre></div>`);
       continue;
     }
 
@@ -167,6 +201,8 @@ export function renderMarkdown(src: string): string {
     if (quoteRe.test(line)) {
       const buf: string[] = [];
       while (i < lines.length && quoteRe.test(lines[i])) { buf.push(lines[i].replace(quoteRe, '')); i += 1; }
+      // 判级结论引用块常以原始 level 键 `defect——` 起头；上方印章已呈现结论，去掉冗余英文键
+      if (buf.length) buf[0] = buf[0].replace(/^(pass|defect|fail|review)\s*[—–\-－]+\s*/i, '');
       out.push(`<blockquote class="md-quote">${renderMarkdown(buf.join('\n'))}</blockquote>`);
       continue;
     }

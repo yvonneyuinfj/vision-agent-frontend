@@ -65,6 +65,7 @@ const DEFS: Array<Omit<ApiUnit, 'live' | 'result'>> = [
   { key: 'tasks.detail', label: '任务详情', group: '任务中心', method: 'GET', path: '/tasks/{id}', probePath: '/tasks?limit=1' },
   { key: 'tasks.submit', label: '提交任务', group: '任务中心', method: 'POST', path: '/tasks', probePath: '/tasks?limit=1' },
   { key: 'tasks.review', label: '人工复核', group: '任务中心', method: 'POST', path: '/tasks/{id}/review', probePath: '/tasks?limit=1' },
+  { key: 'tasks.sceneConfirm', label: '场景歧义确认', group: '任务中心', method: 'POST', path: '/tasks/{id}/scene-confirm', probePath: '/tasks?limit=1' },
   { key: 'tasks.retry', label: '失败重试', group: '任务中心', method: 'POST', path: '/tasks/{id}/retry', probePath: '/tasks?limit=1' },
 ];
 

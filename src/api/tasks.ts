@@ -33,9 +33,54 @@ export interface QaDefectItem {
   source?: 'model' | 'manual' | 'agent_visual';
   human_rejected?: boolean;
   image_name?: string;
+  /** 人工修订时的原值快照（改类/改严重度/移框前的 before 值），供审计与报告叙述 */
+  revised?: Record<string, unknown> | null;
+  /** 存量非规范条目可能只落以下字段而无 defect_type（热部链路 / 分类结果族）：
+   *  复核工作台播种时按 type → label → class_name → name → code 归一到 defect_type。 */
+  type?: string;
+  label?: string;
+  class_name?: string;
 }
 
 export interface QaGradeInfo { level: string; summary: string; [k: string]: unknown }
+
+/** 推理产物引用（业务 URI，可直接作 img src / 下载）：
+ *  复核期来自 review.artifacts（中断载荷），终局后来自 report.artifacts。 */
+export interface QaArtifactRef {
+  name: string;
+  mime: string | null;
+  uri: string;
+}
+
+/** 工具类别定义表（class_id/class_name/description/is_true_defect）：改类下拉候选与语义转译。 */
+export interface QaClassDef {
+  class_id?: string | number | null;
+  class_name?: string;
+  description?: string;
+  is_true_defect?: boolean | null;
+  [k: string]: unknown;
+}
+
+/** review 通道双语义（同名字段互斥，按有无 action 区分）：
+ *  1) 复核门中断载荷 —— question / grade / candidates / confirm_type / artifacts，
+ *     等待人工决定；2) 已提交的人工决定 —— action / opinion / grading_result / reviewed_at。
+ *  注意 confirm_type==='scene' 的中断不是判级复核，须走 /scene-confirm 恢复。 */
+export interface QaReviewInfo {
+  action?: string;
+  opinion?: string;
+  reviewed_at?: string | null;
+  grading_result?: string;
+  question?: string;
+  confirm_type?: string;
+  candidates?: Array<{ scene: string; confidence?: number | null; [k: string]: unknown }>;
+  grade?: QaGradeInfo | null;
+  standardized_count?: number;
+  knowledge_count?: number;
+  artifacts?: QaArtifactRef[];
+  decision_options?: string[];
+  defects_diff?: Record<string, number>;
+  [k: string]: unknown;
+}
 
 export interface QaReportRef {
   report_type: string;
@@ -43,7 +88,7 @@ export interface QaReportRef {
   uri: string;
   version: string;
   analysis_lead?: string;
-  artifacts?: Array<{ name: string; mime: string | null; uri: string }>;
+  artifacts?: QaArtifactRef[];
 }
 
 export interface QaTaskDetail extends QaTaskSummary {
@@ -51,10 +96,10 @@ export interface QaTaskDetail extends QaTaskSummary {
   input_uris: string[];
   steps: Array<{ node: string; message: string; ts: string }>;
   standardized: QaDefectItem[];
-  class_definitions?: unknown[];
+  class_definitions?: QaClassDef[];
   grade: QaGradeInfo | null;
   knowledge: Array<{ content: string; score: number; doc_name: string; chunk_id: string | null }>;
-  review: { action: string; opinion: string; reviewed_at?: string | null } | null;
+  review: QaReviewInfo | null;
   report: QaReportRef | null;
   error: { node: string; code: number; message: string } | null;
   children?: QaTaskSummary[];
@@ -160,6 +205,17 @@ export async function reviewTask(taskId: string, body: ReviewPayload): Promise<u
 
 export async function retryTask(taskId: string): Promise<{ task_id: string }> {
   return qaFetch(`/tasks/${encodeURIComponent(taskId)}/retry`, { method: 'POST' });
+}
+
+/** 场景人工确认（多候选歧义恢复）：后端 review_task 对 confirm_type=scene 的任务
+ *  会 409 拒绝，必须走本端点；scene 必须是待确认候选之一，否则 400。 */
+export async function confirmScene(
+  taskId: string, scene: string, opinion = '',
+): Promise<{ task_id: string; scene: string }> {
+  return qaFetch(`/tasks/${encodeURIComponent(taskId)}/scene-confirm`, {
+    method: 'POST',
+    body: JSON.stringify({ scene, opinion }),
+  });
 }
 
 /** 从后端 input_uri（形如 /api/v1/tasks/{id}/files/{name}?kind=inputs）取文件名。 */
